@@ -11,9 +11,11 @@
     "build": "node scripts/run-framework.mjs build",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "node test/domain.test.mjs",
+    "test:integration": "node test/integration.mjs",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:local": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --file drizzle/0000_perfect_viper.sql --config dist/server/wrangler.json --persist-to .wrangler/state --yes"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -63,7 +65,8 @@
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.5",
     "vite": "8.0.13",
-    "wrangler": "4.92.0"
+    "wrangler": "4.92.0",
+    "ws": "^8.22.0"
   },
   "type": "module",
   "overrides": {
