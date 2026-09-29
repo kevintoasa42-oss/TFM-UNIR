@@ -26,3 +26,10 @@ export const bootstrap = sqliteTable("bootstrap", {
   id: integer("id").primaryKey(),
   userId: text("user_id").notNull().references(() => users.id),
 });
+
+export const rooms = sqliteTable("rooms", {
+  code: text("code").primaryKey(),
+  data: text("data").notNull(),
+  revision: integer("revision").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+});

@@ -29,18 +29,23 @@ export function GameView({ user, exams, selectedExamId, setSelectedExamId, notif
     if (!code) { setRoom(null); return; }
     let disposed = false;
     let retry: number | undefined;
+    let heartbeat: number | undefined;
     let attempts = 0;
     const connect = () => {
       const protocol = location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${location.host}/api/rooms/${code}/ws`);
       socket.current = ws;
-      ws.onopen = () => { attempts = 0; setConnected(true); };
+      ws.onopen = () => {
+        attempts = 0; setConnected(true);
+        heartbeat = window.setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "sync" })); }, 2000);
+      };
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data as string) as { type: string; room?: RoomView; message?: string };
         if (message.type === "state" && message.room) { setRoom(message.room); setNow(Date.now()); }
         if (message.type === "error" && message.message) notify(message.message, true);
       };
       ws.onclose = () => {
+        window.clearInterval(heartbeat);
         if (socket.current === ws) socket.current = null;
         setConnected(false);
         if (!disposed && attempts++ < 6) retry = window.setTimeout(connect, Math.min(1000 * attempts, 5000));
@@ -49,7 +54,7 @@ export function GameView({ user, exams, selectedExamId, setSelectedExamId, notif
       ws.onerror = () => { /* onclose handles reconnect and feedback */ };
     };
     connect();
-    return () => { disposed = true; window.clearTimeout(retry); socket.current?.close(); socket.current = null; };
+    return () => { disposed = true; window.clearTimeout(retry); window.clearInterval(heartbeat); socket.current?.close(); socket.current = null; };
   }, [code, notify]);
   useEffect(() => {
     if (room?.phase !== "question") return;

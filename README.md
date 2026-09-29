@@ -1,6 +1,6 @@
 # FlashReto
 
-Aplicación web de flashcards y exámenes de opción múltiple en español. Un **administrador** organiza áreas, temas, preguntas y exámenes; un **usuario** se registra, entra con contraseña y participa en partidas de dos personas mediante un código de seis dígitos. Las preguntas se guardan en D1 y las salas se sincronizan con WebSocket.
+Aplicación web de flashcards y exámenes de opción múltiple en español. Un **administrador** organiza áreas, temas, preguntas y exámenes; un **usuario** se registra, entra con contraseña y participa en partidas de dos personas mediante un código de seis dígitos. Las preguntas y salas se guardan en D1; los navegadores reciben los cambios mediante WebSocket.
 
 ## Ejecutar con NVM
 
@@ -33,23 +33,23 @@ El navegador no recibe la opción correcta mientras la pregunta está abierta. L
 flowchart LR
   UI[React: pantallas por función] --> Client[Cliente HTTP y WebSocket]
   Client --> API[Worker: autenticación y API REST]
-  API --> D1[(D1: cuentas, sesiones, bibliotecas)]
-  API --> Room[Durable Object por sala]
-  Room --> WS[WebSocket: dos jugadores]
+  API --> D1[(D1: cuentas, bibliotecas, salas)]
+  API --> WS[WebSocket: dos jugadores]
+  WS --> D1
   UI --> Domain[Reglas puras del dominio]
-  Room --> Domain
+  API --> Domain
 ```
 
 - `src/domain`: modelos, validación de contenido y transiciones puras de la partida; no depende de React ni de D1.
 - `src/features`: formularios y pantallas de autenticación, biblioteca, preguntas, exámenes, estudio, CSV y partida.
 - `src/infrastructure/api-client.ts`: único punto de acceso HTTP desde React.
-- `src/server`: router REST, autenticación, validación de contenido y Durable Object que controla la sala.
+- `src/server`: router REST, autenticación, validación de contenido, estado de sala en D1 y conexiones WebSocket.
 - `db/schema.ts` y `drizzle/`: esquema y migración de SQLite/D1.
 - `build/sites-worker.ts`: entrada del Worker; deriva `/api/*` al router y el resto a Vinext.
 
 La biblioteca de cada administrador se almacena como un documento JSON validado en D1. Esto mantiene pequeñas y comprensibles las operaciones de creación, edición, eliminación e importación. Un número de revisión evita sobrescribir cambios hechos en otra pestaña. El servidor comprueba propiedad, relaciones y respuesta correcta antes de aceptar el documento. Las sesiones usan cookies `HttpOnly` con `SameSite=Lax`; las contraseñas se derivan con PBKDF2 y una sal individual.
 
-Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** sí aporta valor aquí: la sala envía los cambios de ronda y puntuación a ambos jugadores sin sondeo. Cada sala tiene una única autoridad para tiempo, respuestas y puntuación.
+Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. D1 es la autoridad para tiempo, respuestas y puntuación: cada cambio usa una revisión condicional, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones de la sala; esta solución evita un servicio adicional y funciona con las vinculaciones disponibles en Sites. Para una aplicación con muchas salas concurrentes, convendría migrar esta coordinación a Durable Objects.
 
 ## API principal
 

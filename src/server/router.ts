@@ -1,17 +1,15 @@
 import { z } from "zod";
-import { createSession, currentUser, loginSchema, passwordMatches, passwordRecord, registerSchema, requireAdmin, requireUser, revokeSession, clearSessionCookie, type AuthUser, type Role } from "./auth";
+import { createSession, currentUser, loginSchema, passwordMatches, passwordRecord, registerSchema, requireAdmin, requireUser, revokeSession, clearSessionCookie, type AuthUser } from "./auth";
 import { emptyContent, readLibrary, writeLibrary } from "./content-store";
 import { body, database, errorResponse, HttpError, json, sameOrigin } from "./http";
+import { roomView } from "../domain/room";
+import { connectRoom } from "./room-socket";
+import { joinStoredRoom, reserveRoom } from "./room-store";
 
 function parse<T>(schema: z.ZodSchema<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new HttpError(400, result.error.issues[0]?.message ?? "Revisa los datos.");
   return result.data;
-}
-
-function roomStub(env: Cloudflare.Env, code: string): DurableObjectStub {
-  if (!env.ROOMS) throw new HttpError(503, "Las salas en tiempo real no están disponibles.");
-  return env.ROOMS.get(env.ROOMS.idFromName(code));
 }
 
 const codePattern = /^\/api\/rooms\/(\d{6})\/(join|ws)$/;
@@ -22,8 +20,9 @@ export async function api(request: Request, env: Cloudflare.Env): Promise<Respon
     const path = url.pathname;
     const method = request.method;
     if (path === "/api/health" && method === "GET") {
-      const ready = Boolean(env.DB && env.ROOMS);
-      return json({ ready, database: Boolean(env.DB), rooms: Boolean(env.ROOMS) }, ready ? 200 : 503);
+      const rooms = env.DB ? Boolean(await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rooms'").first()) : false;
+      const ready = Boolean(env.DB && rooms);
+      return json({ ready, database: Boolean(env.DB), rooms }, ready ? 200 : 503);
     }
     if (method !== "GET") sameOrigin(request);
     const db = database(env);
@@ -99,26 +98,20 @@ export async function api(request: Request, env: Cloudflare.Env): Promise<Respon
       if (!exam) throw new HttpError(404, "El examen no existe.");
       const questions = exam.questionIds.map((id) => content.questions.find((item) => item.id === id)).filter((item) => item !== undefined);
       if (!questions.length || questions.length !== exam.questionIds.length) throw new HttpError(409, "El examen no tiene preguntas válidas.");
-      for (let attempt = 0; attempt < 12; attempt++) {
-        const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
-        const result = await roomStub(env, code).fetch("https://room.internal/init", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, examName: exam.name, hostId: user.id, hostName: user.name, questions }) });
-        if (result.status === 201) return json({ code }, 201);
-        if (result.status !== 409) throw new HttpError(503, "No se pudo crear la sala.");
-      }
-      throw new HttpError(503, "No se encontró un código libre. Intenta otra vez.");
+      const code = await reserveRoom(db, exam.name, user.id, user.name, questions);
+      return json({ code }, 201);
     }
 
     const match = codePattern.exec(path);
     if (match?.[2] === "join" && method === "POST") {
-      const result = await roomStub(env, match[1]).fetch("https://room.internal/join", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: user.id, name: user.name }) });
-      return new Response(result.body, { status: result.status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+      const result = await joinStoredRoom(db, match[1], user.id, user.name);
+      if (result.error) throw new HttpError(409, result.error);
+      return json({ room: roomView(result.room, user.id) });
     }
     if (match?.[2] === "ws" && method === "GET") {
       sameOrigin(request);
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") throw new HttpError(426, "Se requiere WebSocket.");
-      return roomStub(env, match[1]).fetch(`https://room.internal/connect?userId=${encodeURIComponent(user.id)}`, { headers: { Upgrade: "websocket" } });
+      return connectRoom(db, match[1], user.id);
     }
     return json({ error: "Ruta no encontrada." }, 404);
   } catch (error) { return errorResponse(error); }
