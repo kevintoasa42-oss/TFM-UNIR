@@ -49,6 +49,7 @@ class Client {
   close() { this.socket.close(); }
 }
 
+assert.deepEqual((await call("/api/health")).result, { ready: true, database: true, rooms: true });
 const admin = await call("/api/register", "POST", { name: "Admin Prueba", email: `admin-${tag}@example.test`, password });
 assert.equal(admin.status, 201, JSON.stringify(admin.result));
 assert.equal(admin.result.user.role, "admin", "Una base vacía asigna administrador a la primera cuenta");

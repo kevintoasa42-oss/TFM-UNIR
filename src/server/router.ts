@@ -21,6 +21,10 @@ export async function api(request: Request, env: Cloudflare.Env): Promise<Respon
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+    if (path === "/api/health" && method === "GET") {
+      const ready = Boolean(env.DB && env.ROOMS);
+      return json({ ready, database: Boolean(env.DB), rooms: Boolean(env.ROOMS) }, ready ? 200 : 503);
+    }
     if (method !== "GET") sameOrigin(request);
     const db = database(env);
 

@@ -61,6 +61,7 @@ Se eligió **REST** porque las operaciones son directas y no requieren el esquem
 | `POST /api/rooms` | Crear sala desde un examen |
 | `POST /api/rooms/:code/join` | Unirse a una sala |
 | `GET /api/rooms/:code/ws` | Conexión WebSocket de la partida |
+| `GET /api/health` | Estado de las vinculaciones de D1 y salas |
 
 ## Pruebas
 
