@@ -14,7 +14,7 @@ Abre la terminal dentro de la carpeta del proyecto, donde está `iniciar.sh`, y 
 bash iniciar.sh
 ```
 
-Cuando termine, abre la dirección que muestra el script, normalmente **http://localhost:3000**. Ya estarán funcionando el frontend, el backend, WebSocket y PostgreSQL. La primera cuenta que registres será administrador.
+Cuando termine, abre la dirección que muestra el script, normalmente **http://localhost:3000**. Ya estarán funcionando el frontend, el backend, WebSocket y PostgreSQL. Al registrarte, elige **Administrador** para crear preguntas o **Usuario** para participar en partidas.
 
 Para detener todo:
 

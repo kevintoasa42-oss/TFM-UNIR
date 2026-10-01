@@ -6,6 +6,7 @@ const base = process.env.FLASHRETO_URL;
 const record = JSON.parse(await readFile(process.env.FLASHRETO_TEST_RECORD, "utf8"));
 const response = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: record.email, password: record.password }) });
 assert.equal(response.status, 200, "La cuenta sobrevive a recrear los contenedores");
+assert.equal((await response.json()).user.role, "admin", "El rol guardado sobrevive a recrear los contenedores");
 const cookie = response.headers.get("set-cookie").split(";")[0];
 const content = await (await fetch(`${base}/api/content`, { headers: { Cookie: cookie } })).json();
 assert.equal(content.content.questions[0].id, record.questionId, "Las preguntas sobreviven en el volumen PostgreSQL");

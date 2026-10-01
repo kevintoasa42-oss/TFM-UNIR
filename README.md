@@ -43,11 +43,11 @@ npm run db:local
 npm start
 ```
 
-Abre `http://127.0.0.1:8787`. `npm run db:local` aplica la migración a la base local y solo debe ejecutarse una vez por base. Para desarrollo con recarga automática, puedes usar `npm run dev` después de preparar la base. La primera cuenta registrada se convierte en **administrador**; todas las demás comienzan como **usuario**. Desde **Usuarios**, un administrador puede cambiar el rol de otra cuenta. No se incluyen contraseñas predefinidas.
+Abre `http://127.0.0.1:8787`. `npm run db:local` aplica la migración a la base local y solo debe ejecutarse una vez por base. Para desarrollo con recarga automática, puedes usar `npm run dev` después de preparar la base. Al registrarte, elige **Administrador** para crear preguntas, exámenes y salas, o **Usuario** para participar en partidas. La API valida y guarda el rol elegido en PostgreSQL o D1, independientemente del orden de registro. Las cuentas existentes conservan su rol. Desde **Usuarios**, un administrador puede cambiar el rol de otra cuenta. No se incluyen contraseñas predefinidas.
 
 ## Recorrido
 
-1. Registra la primera cuenta y entra como administrador.
+1. Registra una cuenta y selecciona **Administrador** en **Tipo de cuenta**.
 2. Crea un área y un tema en **Mi biblioteca**.
 3. Agrega preguntas con cuatro opciones y marca la única respuesta correcta, o impórtalas desde CSV con revisión por fila.
 4. Crea un examen con preguntas ordenadas de un solo tema. Puedes estudiar las tarjetas individualmente.
@@ -118,7 +118,7 @@ La biblioteca de cada administrador se almacena como un documento validado: JSON
 
 Los hashes nuevos incluyen el algoritmo y su número de iteraciones. Node conserva 310.000 iteraciones; Sites utiliza 100.000, el máximo que admite el servidor de Cloudflare. Se mantiene la lectura de las contraseñas antiguas de Node. Las bases son independientes y este cambio no requiere borrar cuentas ni cambiar tablas. La prueba de registro de Sites reproduce el límite de producción, que el Worker local no aplica.
 
-Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. El backend controla el tiempo, las respuestas y la puntuación; cada cambio de sala usa una revisión condicional en la base de datos, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones. PostgreSQL usa transacciones para elegir un solo primer administrador y para cambiar roles; las consultas usan parámetros. Para muchas salas concurrentes convendría sustituir la observación periódica de revisiones por un sistema de publicación de eventos.
+Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. El backend controla el tiempo, las respuestas y la puntuación; cada cambio de sala usa una revisión condicional en la base de datos, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones. PostgreSQL usa transacciones para cambiar roles; el registro guarda directamente el rol seleccionado y las consultas usan parámetros. Para muchas salas concurrentes convendría sustituir la observación periódica de revisiones por un sistema de publicación de eventos.
 
 ## API principal
 
@@ -142,11 +142,11 @@ npm run build:postgres
 npm run test:postgres
 ```
 
-`npm test` verifica las reglas del dominio y los contratos de la API: sesión ausente o vencida, permisos de ambos roles, origen, JSON inválido, rutas y parámetros, acceso WebSocket y compatibilidad de contraseñas y cookies existentes.
+`npm test` verifica las reglas del dominio y los contratos de la API: elección de ambos roles al registrarse, rechazo de roles ausentes o inválidos, sesión ausente o vencida, permisos de ambos roles, origen, JSON inválido, rutas y parámetros, acceso WebSocket y compatibilidad de contraseñas y cookies existentes.
 
 `npm run test:postgres` crea un proyecto Docker desechable, con puertos y volumen propios. Ejecuta el recorrido con **dos clientes WebSocket reales**, recrea ambos contenedores conservando el volumen y verifica que la cuenta, la pregunta y la clasificación permanecen. Al terminar elimina solo los recursos de ese proyecto de prueba. No usa la base del entorno normal.
 
-`npm run test:integration` permite ejecutar el mismo recorrido contra un servidor local iniciado con una **base vacía**, usando `FLASHRETO_URL`. Comprueba registros simultáneos con un solo administrador, contraseña incorrecta, correo duplicado, permisos, revisiones, código inválido, pregunta oculta, puntuación, final y cierre por tiempo. Utiliza correos de `example.test` y una contraseña aleatoria solo para esa ejecución. Las pruebas de dominio incluyen CSV válido e inválido, examen vacío y respuesta tardía.
+`npm run test:integration` permite ejecutar el mismo recorrido contra un servidor local iniciado con una **base vacía**, usando `FLASHRETO_URL`. Comprueba que la primera cuenta puede elegir Usuario y las siguientes Administrador, roles inválidos, contraseña incorrecta, correo duplicado, permisos, revisiones, código inválido, pregunta oculta, puntuación, final y cierre por tiempo. Utiliza correos de `example.test` y una contraseña aleatoria solo para esa ejecución. Las pruebas de dominio incluyen CSV válido e inválido, examen vacío y respuesta tardía.
 
 ## Alcance
 

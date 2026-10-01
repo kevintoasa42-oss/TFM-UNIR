@@ -111,6 +111,47 @@ test("servicio: cuentas con el formato PBKDF2 anterior siguen iniciando sesión 
   await assert.rejects(loginAccount(accounts, { email: user.email, password: "Incorrecta-123!" }), /Correo o contraseña incorrectos/);
 });
 
+test("API: el registro guarda y devuelve el rol elegido para ambas cuentas", async () => {
+  const records = new Map();
+  const store = {
+    accounts: {
+      create: async (record) => {
+        records.set(record.email, record);
+        const { id, name, email, role } = record;
+        return { id, name, email, role };
+      },
+      findByEmail: async (email) => records.get(email) ?? null,
+    },
+    sessions: { create: async () => {} },
+  };
+  const headers = { "Content-Type": "application/json" };
+  const options = { passwordIterations: SITES_PASSWORD_ITERATIONS };
+  for (const role of ["user", "admin"]) {
+    const email = `${role}@example.test`;
+    const password = "Registro-con-rol-123!";
+    const registered = await api(request("/api/register", "POST", headers, JSON.stringify({ name: "Cuenta de prueba", email, password, role })), store, undefined, options);
+    assert.equal(registered.status, 201);
+    const result = await registered.json();
+    assert.equal(result.user.role, role);
+    assert.equal(records.get(email).role, role);
+    assert.equal("passwordHash" in result.user, false);
+    const loggedIn = await api(request("/api/login", "POST", headers, JSON.stringify({ email, password })), store, undefined, options);
+    assert.equal(loggedIn.status, 200);
+    assert.equal((await loggedIn.json()).user.role, role);
+  }
+});
+
+test("API: el registro rechaza un rol ausente o distinto de Administrador y Usuario antes de guardar", async () => {
+  const store = { accounts: { create: async () => assert.fail("No debe guardar un registro con rol inválido") } };
+  const headers = { "Content-Type": "application/json" };
+  for (const role of [undefined, null, "owner", "superadmin", "Administrador", 1]) {
+    const input = { name: "Cuenta de prueba", email: "invalid@example.test", password: "Registro-invalido-123!", role };
+    const response = await api(request("/api/register", "POST", headers, JSON.stringify(input)), store);
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: "Selecciona Administrador o Usuario." });
+  }
+});
+
 test("registro y login de Sites funcionan con el límite PBKDF2 de producción", async (t) => {
   const deriveBits = crypto.subtle.deriveBits.bind(crypto.subtle);
   t.mock.method(crypto.subtle, "deriveBits", (algorithm, key, length) => {
@@ -131,9 +172,10 @@ test("registro y login de Sites funcionan con el límite PBKDF2 de producción",
   };
   const options = { passwordIterations: SITES_PASSWORD_ITERATIONS };
   const headers = { "Content-Type": "application/json" };
-  const registered = await api(request("/api/register", "POST", headers, JSON.stringify({ name: account.name, email: account.email, password })), store, undefined, options);
+  const registered = await api(request("/api/register", "POST", headers, JSON.stringify({ name: account.name, email: account.email, password, role: "admin" })), store, undefined, options);
   assert.equal(registered.status, 201);
   assert.deepEqual(await registered.json(), { user: account });
+  assert.equal(saved.role, "admin");
   assert.match(registered.headers.get("set-cookie"), /^fr_session=.+; Path=\/; HttpOnly; SameSite=Lax/);
   assert.match(saved.passwordHash, /^pbkdf2-sha256\$100000\$[a-f0-9]{64}$/);
   assert.equal(saved.passwordHash.split("$")[2], pbkdf2Sync(password, Buffer.from(saved.passwordSalt, "hex"), 100_000, 32, "sha256").toString("hex"));
@@ -151,7 +193,8 @@ test("registro en Node conserva el factor de trabajo y permite volver a iniciar 
     create: async (record) => { saved = record; return user; },
     findByEmail: async () => ({ ...user, passwordSalt: saved.passwordSalt, passwordHash: saved.passwordHash }),
   };
-  await registerAccount(accounts, { name: user.name, email: user.email, password });
+  await registerAccount(accounts, { name: user.name, email: user.email, password, role: "user" });
+  assert.equal(saved.role, "user");
   assert.match(saved.passwordHash, /^pbkdf2-sha256\$310000\$[a-f0-9]{64}$/);
   assert.deepEqual(await loginAccount(accounts, { email: user.email, password }), user);
 });

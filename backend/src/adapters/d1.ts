@@ -5,13 +5,10 @@ export function d1Persistence(db: D1Database): Persistence {
   return {
     accounts: {
       async create(account) {
-        const { id, name, email, passwordHash, passwordSalt, createdAt } = account;
+        const { id, name, email, role, passwordHash, passwordSalt, createdAt } = account;
         try {
-          await db.batch([
-            db.prepare("INSERT INTO users (id, name, email, password_hash, password_salt, role, created_at) VALUES (?, ?, ?, ?, ?, 'user', ?)").bind(id, name, email, passwordHash, passwordSalt, createdAt),
-            db.prepare("INSERT OR IGNORE INTO bootstrap (id, user_id) VALUES (1, ?)").bind(id),
-            db.prepare("UPDATE users SET role = 'admin' WHERE id = ? AND id = (SELECT user_id FROM bootstrap WHERE id = 1)").bind(id),
-          ]);
+          await db.prepare("INSERT INTO users (id, name, email, password_hash, password_salt, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(id, name, email, passwordHash, passwordSalt, role, createdAt).run();
         } catch (error) {
           if (String(error).includes("UNIQUE")) throw new HttpError(409, "Ya existe una cuenta con ese correo.");
           throw error;

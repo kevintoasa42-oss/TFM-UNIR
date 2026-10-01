@@ -12,7 +12,7 @@ async function request<T>(path: string, method = "GET", data?: unknown): Promise
 
 export const apiClient = {
   me: () => request<{ user: Account | null }>("/api/me"),
-  register: (name: string, email: string, password: string) => request<{ user: Account }>("/api/register", "POST", { name, email, password }),
+  register: (name: string, email: string, password: string, role: Role) => request<{ user: Account }>("/api/register", "POST", { name, email, password, role }),
   login: (email: string, password: string) => request<{ user: Account }>("/api/login", "POST", { email, password }),
   logout: () => request<{ ok: true }>("/api/logout", "POST"),
   content: () => request<{ content: ContentState; revision: number }>("/api/content"),

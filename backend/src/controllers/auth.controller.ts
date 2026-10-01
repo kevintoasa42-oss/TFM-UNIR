@@ -10,7 +10,10 @@ const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email("Escribe un correo válido.").max(254),
   password: z.string().min(8, "La contraseña necesita al menos 8 caracteres.").max(128),
 });
-const registerSchema = loginSchema.extend({ name: z.string().trim().min(2, "Escribe tu nombre.").max(80) });
+const registerSchema = loginSchema.extend({
+  name: z.string().trim().min(2, "Escribe tu nombre.").max(80),
+  role: z.enum(["admin", "user"], { errorMap: () => ({ message: "Selecciona Administrador o Usuario." }) }),
+});
 
 export async function me({ request, store }: PublicContext): Promise<Response> {
   return json({ user: await currentUser(store.sessions, request) });

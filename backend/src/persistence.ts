@@ -1,7 +1,7 @@
 import type { Role, Account as AuthUser, ManagedAccount as ManagedUser } from "../../shared/domain/auth";
 export type { Role, Account as AuthUser, ManagedAccount as ManagedUser } from "../../shared/domain/auth";
 export interface CredentialsUser extends AuthUser { passwordHash: string; passwordSalt: string }
-export interface NewAccount { id: string; name: string; email: string; passwordHash: string; passwordSalt: string; createdAt: number }
+export interface NewAccount { id: string; name: string; email: string; role: Role; passwordHash: string; passwordSalt: string; createdAt: number }
 export interface DocumentRecord { data: string; revision: number }
 
 /** Product-specific ports keep application rules independent of the database driver. */

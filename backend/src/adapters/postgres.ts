@@ -24,16 +24,12 @@ export function postgresPersistence(pool: Pool): Persistence {
     accounts: {
       async create(account) {
         try {
-          return await transaction(pool, async (client) => {
-            // Serialize registration and role changes, including simultaneous first registrations.
-            await client.query("SELECT pg_advisory_xact_lock(782354)");
-            const { id, name, email, passwordHash, passwordSalt, createdAt } = account;
-            await client.query("INSERT INTO users (id, name, email, password_hash, password_salt, role, created_at) VALUES ($1, $2, $3, $4, $5, 'user', $6)", [id, name, email, passwordHash, passwordSalt, createdAt]);
-            const elected = await client.query("INSERT INTO bootstrap (id, user_id) VALUES (1, $1) ON CONFLICT (id) DO NOTHING RETURNING user_id", [id]);
-            if (elected.rowCount) await client.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
-            const result = await client.query<AuthUser>("SELECT id, name, email, role FROM users WHERE id = $1", [id]);
-            return result.rows[0];
-          });
+          const { id, name, email, role, passwordHash, passwordSalt, createdAt } = account;
+          const result = await pool.query<AuthUser>(
+            "INSERT INTO users (id, name, email, password_hash, password_salt, role, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, role",
+            [id, name, email, passwordHash, passwordSalt, role, createdAt],
+          );
+          return result.rows[0];
         } catch (error) {
           if (error && typeof error === "object" && "code" in error && error.code === "23505") throw new HttpError(409, "Ya existe una cuenta con ese correo.");
           throw error;
