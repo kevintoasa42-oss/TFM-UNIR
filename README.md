@@ -116,6 +116,8 @@ Se conserva un solo `package.json` y `package-lock.json` en la raíz para instal
 
 La biblioteca de cada administrador se almacena como un documento validado: JSONB en PostgreSQL y texto JSON en D1. Las cuentas y sesiones tienen sus propias tablas y claves foráneas. Esto mantiene pequeñas y comprensibles las operaciones de creación, edición, eliminación e importación. Un número de revisión evita sobrescribir cambios hechos en otra pestaña. El servidor comprueba propiedad, relaciones y respuesta correcta antes de aceptar el documento. Las sesiones usan cookies `HttpOnly` con `SameSite=Lax`; las contraseñas se derivan con PBKDF2 y una sal individual.
 
+Los hashes nuevos incluyen el algoritmo y su número de iteraciones. Node conserva 310.000 iteraciones; Sites utiliza 100.000, el máximo que admite el servidor de Cloudflare. Se mantiene la lectura de las contraseñas antiguas de Node. Las bases son independientes y este cambio no requiere borrar cuentas ni cambiar tablas. La prueba de registro de Sites reproduce el límite de producción, que el Worker local no aplica.
+
 Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. El backend controla el tiempo, las respuestas y la puntuación; cada cambio de sala usa una revisión condicional en la base de datos, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones. PostgreSQL usa transacciones para elegir un solo primer administrador y para cambiar roles; las consultas usan parámetros. Para muchas salas concurrentes convendría sustituir la observación periódica de revisiones por un sistema de publicación de eventos.
 
 ## API principal

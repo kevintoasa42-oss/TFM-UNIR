@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash, pbkdf2Sync } from "node:crypto";
 import { api } from "../src/router.ts";
-import { loginAccount } from "../src/services/auth.service.ts";
+import { loginAccount, registerAccount } from "../src/services/auth.service.ts";
+import { SITES_PASSWORD_ITERATIONS } from "../src/security/password.ts";
 
 const userId = "ba261071-e0e0-4fe9-a177-a4501b2a8907";
 const user = { id: userId, name: "Usuario de prueba", email: "user@example.test", role: "user" };
@@ -108,4 +109,49 @@ test("servicio: cuentas con el formato PBKDF2 anterior siguen iniciando sesión 
   const accounts = { findByEmail: async () => ({ ...user, passwordSalt: salt, passwordHash }) };
   assert.deepEqual(await loginAccount(accounts, { email: user.email, password }), user);
   await assert.rejects(loginAccount(accounts, { email: user.email, password: "Incorrecta-123!" }), /Correo o contraseña incorrectos/);
+});
+
+test("registro y login de Sites funcionan con el límite PBKDF2 de producción", async (t) => {
+  const deriveBits = crypto.subtle.deriveBits.bind(crypto.subtle);
+  t.mock.method(crypto.subtle, "deriveBits", (algorithm, key, length) => {
+    if (algorithm.name === "PBKDF2" && algorithm.iterations > 100_000) {
+      throw new DOMException("Pbkdf2 failed: iteration counts above 100000 are not supported.", "NotSupportedError");
+    }
+    return deriveBits(algorithm, key, length);
+  });
+  const password = "Registro-Sites-123!";
+  let saved;
+  const account = { ...user, role: "admin" };
+  const store = {
+    accounts: {
+      create: async (record) => { saved = record; return account; },
+      findByEmail: async () => ({ ...account, passwordSalt: saved.passwordSalt, passwordHash: saved.passwordHash }),
+    },
+    sessions: { create: async () => {} },
+  };
+  const options = { passwordIterations: SITES_PASSWORD_ITERATIONS };
+  const headers = { "Content-Type": "application/json" };
+  const registered = await api(request("/api/register", "POST", headers, JSON.stringify({ name: account.name, email: account.email, password })), store, undefined, options);
+  assert.equal(registered.status, 201);
+  assert.deepEqual(await registered.json(), { user: account });
+  assert.match(registered.headers.get("set-cookie"), /^fr_session=.+; Path=\/; HttpOnly; SameSite=Lax/);
+  assert.match(saved.passwordHash, /^pbkdf2-sha256\$100000\$[a-f0-9]{64}$/);
+  assert.equal(saved.passwordHash.split("$")[2], pbkdf2Sync(password, Buffer.from(saved.passwordSalt, "hex"), 100_000, 32, "sha256").toString("hex"));
+  const loggedIn = await api(request("/api/login", "POST", headers, JSON.stringify({ email: account.email, password })), store, undefined, options);
+  assert.equal(loggedIn.status, 200);
+  assert.deepEqual(await loggedIn.json(), { user: account });
+  const rejected = await api(request("/api/login", "POST", headers, JSON.stringify({ email: account.email, password: "Incorrecta-123!" })), store, undefined, options);
+  assert.equal(rejected.status, 401);
+});
+
+test("registro en Node conserva el factor de trabajo y permite volver a iniciar sesión", async () => {
+  const password = "Registro-Node-123!";
+  let saved;
+  const accounts = {
+    create: async (record) => { saved = record; return user; },
+    findByEmail: async () => ({ ...user, passwordSalt: saved.passwordSalt, passwordHash: saved.passwordHash }),
+  };
+  await registerAccount(accounts, { name: user.name, email: user.email, password });
+  assert.match(saved.passwordHash, /^pbkdf2-sha256\$310000\$[a-f0-9]{64}$/);
+  assert.deepEqual(await loginAccount(accounts, { email: user.email, password }), user);
 });

@@ -16,9 +16,9 @@ export async function me({ request, store }: PublicContext): Promise<Response> {
   return json({ user: await currentUser(store.sessions, request) });
 }
 
-export async function register({ request, store }: PublicContext): Promise<Response> {
+export async function register({ request, store, passwordIterations }: PublicContext): Promise<Response> {
   const input = parse(registerSchema, await body(request));
-  const user = await registerAccount(store.accounts, input);
+  const user = await registerAccount(store.accounts, input, passwordIterations);
   const token = await createSessionToken(store.sessions, user.id);
   return json({ user }, 201, { "Set-Cookie": sessionCookie(token, request) });
 }

@@ -5,13 +5,14 @@ import type { ConnectorBinding } from "../../shared/sites/connector-contract.mjs
 import { api } from "../src/router";
 import { d1Persistence } from "../src/adapters/d1";
 import { connectRoom } from "../src/room-socket";
+import { SITES_PASSWORD_ITERATIONS } from "../src/security/password";
 
 export default {
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
     if (new URL(request.url).pathname.startsWith("/api/")) {
       if (!env.DB) return Response.json({ error: "La base de datos no está disponible." }, { status: 503 });
       const store = d1Persistence(env.DB);
-      return api(request, store, (code, userId) => connectRoom(store.rooms, code, userId));
+      return api(request, store, (code, userId) => connectRoom(store.rooms, code, userId), { passwordIterations: SITES_PASSWORD_ITERATIONS });
     }
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
