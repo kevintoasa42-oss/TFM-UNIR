@@ -1,6 +1,5 @@
 import { roomView } from "../../shared/domain/room";
-import { actOnRoom, readStoredRoom, type RoomAction, type StoredRoom } from "./room-store";
-import { HttpError } from "./http";
+import { actOnRoom, loadRoomConnection, readStoredRoom, type RoomAction, type StoredRoom } from "./services/room.service";
 import type { Persistence } from "./persistence";
 
 export interface RoomSocket {
@@ -10,12 +9,6 @@ export interface RoomSocket {
   onMessage(listener: (data: unknown) => void): void;
   onClose(listener: () => void): void;
   onError(listener: () => void): void;
-}
-
-export async function loadRoomConnection(rooms: Persistence["rooms"], code: string, userId: string): Promise<StoredRoom> {
-  const initial = await readStoredRoom(rooms, code);
-  if (!initial.room.players.some((player) => player.id === userId)) throw new HttpError(403, "No perteneces a esta sala.");
-  return initial;
 }
 
 /** Both runtimes deliver the same protocol; the database revision coordinates all connections. */

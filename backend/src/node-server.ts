@@ -7,9 +7,11 @@ import { WebSocketServer } from "ws";
 import { api } from "./router";
 import { postgresPersistence } from "./adapters/postgres";
 import { migratePostgres } from "./adapters/postgres-migrations";
-import { requireUser } from "./auth";
+import { requireUser } from "./middleware/auth.middleware";
+import { matchApiRoute } from "./routes/match-route";
 import { errorResponse, HttpError, sameOrigin } from "./http";
-import { attachRoomSocket, loadRoomConnection } from "./room-socket";
+import { attachRoomSocket } from "./room-socket";
+import { loadRoomConnection } from "./services/room.service";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("Configura DATABASE_URL para iniciar el backend PostgreSQL.");
@@ -90,11 +92,12 @@ server.on("upgrade", (request, socket, head) => {
   void (async () => {
     try {
       const incoming = webRequest(request);
-      const match = /^\/api\/rooms\/(\d{6})\/ws$/.exec(new URL(incoming.url).pathname);
-      if (!match) throw new HttpError(404, "Ruta no encontrada.");
+      const match = matchApiRoute(incoming.method, new URL(incoming.url).pathname);
+      if (!match || match.route.transport !== "websocket") throw new HttpError(404, "Ruta no encontrada.");
+      const code = match.params.code;
       sameOrigin(incoming);
       const user = await requireUser(store.sessions, incoming);
-      const initial = await loadRoomConnection(store.rooms, match[1], user.id);
+      const initial = await loadRoomConnection(store.rooms, code, user.id);
       sockets.handleUpgrade(request, socket, head, (client) => {
         attachRoomSocket({
           get readyState() { return client.readyState; },
@@ -103,7 +106,7 @@ server.on("upgrade", (request, socket, head) => {
           onMessage: (listener) => client.on("message", (data, binary) => listener(binary ? data : data.toString())),
           onClose: (listener) => client.on("close", listener),
           onError: (listener) => client.on("error", listener),
-        }, store.rooms, match[1], user.id, initial);
+        }, store.rooms, code, user.id, initial);
       });
     } catch (error) {
       const result = errorResponse(error);

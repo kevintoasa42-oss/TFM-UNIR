@@ -61,8 +61,9 @@ El navegador no recibe la opción correcta mientras la pregunta está abierta. L
 ```mermaid
 flowchart LR
   UI[React: pantallas por función] --> Client[Cliente HTTP y WebSocket]
-  Client --> API[API REST y sesión]
-  API --> Rules[Casos de uso y reglas de partida]
+  Client --> API[Rutas y permisos]
+  API --> Controllers[Controladores HTTP]
+  Controllers --> Rules[Servicios y reglas de partida]
   Rules --> Ports[Contratos de persistencia]
   Ports --> PG[Adaptador PostgreSQL en Node]
   Ports --> D1[Adaptador D1 en Worker]
@@ -83,7 +84,11 @@ frontend/                Pantallas, formularios, estilos y archivos del navegado
   vite.config.ts         Compilación del frontend para Docker
   vite.sites.config.ts   Configuración del sitio con Vinext
 backend/                 API, sesiones, permisos y WebSocket
-  src/                   Casos de uso, router y servidor Node
+  src/routes/            Método, URL, permisos y controlador de cada ruta
+  src/controllers/       Validación HTTP y respuestas
+  src/services/          Casos de uso y reglas de usuarios, contenido y salas
+  src/middleware/        Comprobación de sesión y rol
+  src/security/          Derivación y comprobación de contraseñas
   src/adapters/          Acceso a PostgreSQL y D1
   sites/                 Entrada Worker y compatibilidad con Sites
   test/                  Integración multijugador y persistencia
@@ -102,6 +107,10 @@ iniciar.sh               Arranque con un solo comando
 El código del navegador no importa código del servidor. Se comunica con él por HTTP y WebSocket; los tipos públicos de cuentas y las validaciones están en `shared`. El dominio no depende de React ni de SQL. `backend/src/persistence.ts` define los contratos para cuentas, sesiones, bibliotecas y salas; los adaptadores implementan esos contratos con consultas a cada base.
 
 `backend/src/node-server.ts` sirve la API, WebSocket y el frontend compilado. `backend/sites/sites-worker.ts` conecta los mismos casos de uso con el entorno de Sites. Las migraciones se guardan en `db`; las de PostgreSQL tienen un registro y checksum que impiden modificar una migración ya aplicada.
+
+El mapa completo de endpoints está en **`backend/src/routes/api.routes.ts`**. Cada declaración contiene método, URL, acceso (`public`, `authenticated` o `admin`) y controlador. `backend/src/router.ts` encuentra la ruta, verifica la sesión y los permisos, llama al controlador y convierte los errores en respuestas. Los controladores validan los parámetros y el JSON; los servicios reciben datos y contratos de persistencia, sin depender de `Request`, `Response` ni de un controlador SQL.
+
+Por ejemplo, `POST /api/login` entra en `auth.controller.login`, valida las credenciales, llama a `auth.service.loginAccount`, crea la sesión y devuelve la misma cookie que usaba la aplicación. El adaptador PostgreSQL o D1 realiza las consultas. La ruta WebSocket también se declara en ese mapa; cada entorno conserva su propio transporte y usa el mismo servicio de sala para validar jugadores y actualizar la partida.
 
 Se conserva un solo `package.json` y `package-lock.json` en la raíz para instalar y ejecutar todo sin pasos adicionales. La separación es de código y responsabilidades; el entorno sigue usando dos contenedores: la aplicación y PostgreSQL. La compilación local genera `frontend/dist` y `backend/dist`, ambos ignorados por Git. El pequeño `vite.config.ts` de la raíz permite que Sites encuentre la configuración de `frontend`.
 
@@ -130,6 +139,8 @@ npm run build
 npm run build:postgres
 npm run test:postgres
 ```
+
+`npm test` verifica las reglas del dominio y los contratos de la API: sesión ausente o vencida, permisos de ambos roles, origen, JSON inválido, rutas y parámetros, acceso WebSocket y compatibilidad de contraseñas y cookies existentes.
 
 `npm run test:postgres` crea un proyecto Docker desechable, con puertos y volumen propios. Ejecuta el recorrido con **dos clientes WebSocket reales**, recrea ambos contenedores conservando el volumen y verifica que la cuenta, la pregunta y la clasificación permanecen. Al terminar elimina solo los recursos de ese proyecto de prueba. No usa la base del entorno normal.
 

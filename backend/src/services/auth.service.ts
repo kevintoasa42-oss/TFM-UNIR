@@ -1,0 +1,22 @@
+import { ApplicationError } from "../errors.ts";
+import type { AuthUser, Persistence } from "../persistence.ts";
+import { passwordMatches, passwordRecord } from "../security/password.ts";
+
+export interface LoginInput { email: string; password: string }
+export interface RegisterInput extends LoginInput { name: string }
+
+export async function registerAccount(accounts: Persistence["accounts"], input: RegisterInput): Promise<AuthUser> {
+  const { salt, hash } = await passwordRecord(input.password);
+  return accounts.create({
+    id: crypto.randomUUID(), name: input.name, email: input.email,
+    passwordHash: hash, passwordSalt: salt, createdAt: Date.now(),
+  });
+}
+
+export async function loginAccount(accounts: Persistence["accounts"], input: LoginInput): Promise<AuthUser> {
+  const record = await accounts.findByEmail(input.email);
+  if (!record || !await passwordMatches(input.password, record.passwordSalt, record.passwordHash)) {
+    throw new ApplicationError(401, "Correo o contraseña incorrectos.");
+  }
+  return { id: record.id, name: record.name, email: record.email, role: record.role };
+}
