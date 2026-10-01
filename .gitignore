@@ -38,6 +38,10 @@ yarn-error.log*
 next-env.d.ts
 /dist/
 /dist-postgres/
+/frontend/dist/
+/backend/dist/
+/frontend/.next/
+/frontend/.vinext/
 /.wrangler/
 # Checkout-local execution profile and tool state; never publish them.
 /.sites-runtime/

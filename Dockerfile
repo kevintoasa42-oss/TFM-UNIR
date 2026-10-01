@@ -10,8 +10,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /app/package.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist-postgres ./dist-postgres
+COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
+COPY --from=build --chown=node:node /app/frontend/dist ./frontend/dist
 COPY --from=build --chown=node:node /app/db/postgres ./db/postgres
 USER node
 EXPOSE 3000
-CMD ["node", "dist-postgres/server.mjs"]
+CMD ["node", "backend/dist/server.mjs"]

@@ -72,18 +72,38 @@ flowchart LR
   WS --> Rules
 ```
 
-- `src/domain`: modelos, validación de contenido y transiciones puras de la partida; no depende de React ni de D1.
-- `src/features`: formularios y pantallas de autenticación, biblioteca, preguntas, exámenes, estudio, CSV y partida.
-- `src/infrastructure/api-client.ts`: único punto de acceso HTTP desde React.
-- `src/server`: router REST, autenticación, validación de contenido y transiciones de sala.
-- `src/server/persistence.ts`: contratos concretos para cuentas, sesiones, bibliotecas y salas.
-- `src/server/adapters`: consultas de D1 y PostgreSQL. Solo estas implementaciones conocen SQL y los controladores de base de datos.
-- `src/server/node-server.ts`: transporte HTTP y WebSocket de Node y archivos del frontend. `room-socket.ts` comparte el protocolo con el Worker.
-- `db/postgres`: migraciones SQL de PostgreSQL; su registro y checksum evitan modificar migraciones ya aplicadas.
-- `db/schema.ts` y `drizzle/`: esquema y migraciones de SQLite/D1, conservados para Sites.
-- `local-web`: entrada Vite que reutiliza el mismo componente React de `app/page.tsx`; no duplica las pantallas.
-- `compose.yaml` y `Dockerfile`: servicios, volumen persistente, salud y construcción del entorno PostgreSQL.
-- `build/sites-worker.ts`: entrada del Worker; deriva `/api/*` al router y el resto a Vinext.
+```text
+frontend/                Pantallas, formularios, estilos y archivos del navegador
+  app/                   Página principal y layout de Sites
+  src/features/          Autenticación, contenido, estudio, CSV y partida
+  src/infrastructure/    Cliente de la API
+  components/            Componentes de interfaz reutilizables
+  public/                Imágenes e iconos
+  main.tsx               Entrada React para Docker
+  vite.config.ts         Compilación del frontend para Docker
+  vite.sites.config.ts   Configuración del sitio con Vinext
+backend/                 API, sesiones, permisos y WebSocket
+  src/                   Casos de uso, router y servidor Node
+  src/adapters/          Acceso a PostgreSQL y D1
+  sites/                 Entrada Worker y compatibilidad con Sites
+  test/                  Integración multijugador y persistencia
+db/                      Esquemas y migraciones de base de datos
+  postgres/              Migraciones SQL de PostgreSQL
+  d1/                    Esquema, configuración y migraciones de SQLite/D1
+shared/                  Código que necesitan frontend y backend
+  domain/                Modelos, contratos de cuentas y reglas puras
+  test/                  Pruebas de contenido, CSV y partida
+scripts/                 Instalación, compilación y pruebas del entorno completo
+compose.yaml             Servicios Docker y volumen persistente
+Dockerfile               Construcción y ejecución de la aplicación
+iniciar.sh               Arranque con un solo comando
+```
+
+El código del navegador no importa código del servidor. Se comunica con él por HTTP y WebSocket; los tipos públicos de cuentas y las validaciones están en `shared`. El dominio no depende de React ni de SQL. `backend/src/persistence.ts` define los contratos para cuentas, sesiones, bibliotecas y salas; los adaptadores implementan esos contratos con consultas a cada base.
+
+`backend/src/node-server.ts` sirve la API, WebSocket y el frontend compilado. `backend/sites/sites-worker.ts` conecta los mismos casos de uso con el entorno de Sites. Las migraciones se guardan en `db`; las de PostgreSQL tienen un registro y checksum que impiden modificar una migración ya aplicada.
+
+Se conserva un solo `package.json` y `package-lock.json` en la raíz para instalar y ejecutar todo sin pasos adicionales. La separación es de código y responsabilidades; el entorno sigue usando dos contenedores: la aplicación y PostgreSQL. La compilación local genera `frontend/dist` y `backend/dist`, ambos ignorados por Git. El pequeño `vite.config.ts` de la raíz permite que Sites encuentre la configuración de `frontend`.
 
 La biblioteca de cada administrador se almacena como un documento validado: JSONB en PostgreSQL y texto JSON en D1. Las cuentas y sesiones tienen sus propias tablas y claves foráneas. Esto mantiene pequeñas y comprensibles las operaciones de creación, edición, eliminación e importación. Un número de revisión evita sobrescribir cambios hechos en otra pestaña. El servidor comprueba propiedad, relaciones y respuesta correcta antes de aceptar el documento. Las sesiones usan cookies `HttpOnly` con `SameSite=Lax`; las contraseñas se derivan con PBKDF2 y una sal individual.
 

@@ -34,10 +34,10 @@ function run(command, args, env = process.env) {
 const compose = (...args) => run("docker", ["compose", "--project-name", project, "--env-file", envFile, "--file", "compose.yaml", ...args]);
 try {
   await compose("up", "--build", "--detach", "--wait");
-  await run(process.execPath, ["test/integration.mjs"], testEnv);
+  await run(process.execPath, ["backend/test/integration.mjs"], testEnv);
   await compose("down");
   await compose("up", "--detach", "--wait", "--no-build");
-  await run(process.execPath, ["test/postgres-persistence.mjs"], testEnv);
+  await run(process.execPath, ["backend/test/postgres-persistence.mjs"], testEnv);
 } finally {
   // The generated project owns only disposable test volumes; the user's volume is a separate project.
   await compose("down", "--volumes");

@@ -10,6 +10,8 @@ node_modules
 .codex
 dist
 dist-postgres
+frontend/dist
+backend/dist
 outputs
 work
 coverage

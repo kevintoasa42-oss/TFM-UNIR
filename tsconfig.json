@@ -25,8 +25,9 @@
     ],
     "paths": {
       "@/*": [
-        "./*"
-      ]
+        "./frontend/*"
+      ],
+      "@shared/*": ["./shared/*"]
     },
     "types": [
       "node",
@@ -43,6 +44,12 @@
   ],
   "exclude": [
     "node_modules",
-    "examples"
+    "backend/examples",
+    "frontend/dist",
+    "backend/dist",
+    "dist",
+    "dist-postgres",
+    ".sites-runtime",
+    ".wrangler"
   ]
 }
