@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 import WebSocket from "ws";
 
 const base = process.env.FLASHRETO_URL ?? "http://127.0.0.1:8787";
@@ -50,12 +51,17 @@ class Client {
 }
 
 assert.deepEqual((await call("/api/health")).result, { ready: true, database: true, rooms: true });
-const admin = await call("/api/register", "POST", { name: "Admin Prueba", email: `admin-${tag}@example.test`, password });
-assert.equal(admin.status, 201, JSON.stringify(admin.result));
-assert.equal(admin.result.user.role, "admin", "Una base vacía asigna administrador a la primera cuenta");
-const user = await call("/api/register", "POST", { name: "Estudiante Prueba", email: `user-${tag}@example.test`, password });
-assert.equal(user.status, 201, JSON.stringify(user.result));
-assert.equal(user.result.user.role, "user");
+const registered = await Promise.all([
+  call("/api/register", "POST", { name: "Ana Prueba", email: `ana-${tag}@example.test`, password }),
+  call("/api/register", "POST", { name: "Luis Prueba", email: `luis-${tag}@example.test`, password }),
+]);
+registered.forEach((result) => assert.equal(result.status, 201, JSON.stringify(result.result)));
+assert.equal(registered.filter((result) => result.result.user.role === "admin").length, 1, "Dos registros simultáneos eligen un solo primer administrador");
+const admin = registered.find((result) => result.result.user.role === "admin");
+const user = registered.find((result) => result.result.user.role === "user");
+assert.ok(admin && user);
+assert.equal((await call("/api/register", "POST", { name: "Duplicada", email: admin.result.user.email, password })).status, 409);
+assert.equal((await call("/api/login", "POST", { email: admin.result.user.email, password: "Incorrecta-123" })).status, 401);
 
 const areaId = randomUUID(), topicId = randomUUID(), questionId = randomUUID(), examId = randomUUID();
 const content = {
@@ -128,11 +134,16 @@ assert.equal(listed.status, 200);
 assert.equal(listed.result.users.length >= 2, true);
 assert.equal((await call(`/api/users/${user.result.user.id}`, "PATCH", { role: "admin" }, admin.cookie)).status, 200);
 assert.equal((await call("/api/me", "GET", undefined, user.cookie)).result.user.role, "admin");
+assert.equal((await call(`/api/users/${admin.result.user.id}`, "PATCH", { role: "user" }, user.cookie)).status, 200);
+assert.equal((await call("/api/register", "POST", { name: "Nueva Cuenta", email: `nueva-${tag}@example.test`, password })).status, 201);
+assert.equal((await call("/api/me", "GET", undefined, admin.cookie)).result.user.role, "user", "Un registro posterior no recupera un rol retirado");
+assert.equal((await call(`/api/users/${admin.result.user.id}`, "PATCH", { role: "admin" }, user.cookie)).status, 200);
 assert.equal((await call(`/api/users/${user.result.user.id}`, "PATCH", { role: "user" }, admin.cookie)).status, 200);
 assert.equal((await call("/api/me", "GET", undefined, user.cookie)).result.user.role, "user");
 
 await call("/api/logout", "POST", undefined, admin.cookie);
-const loggedIn = await call("/api/login", "POST", { email: `admin-${tag}@example.test`, password });
+const loggedIn = await call("/api/login", "POST", { email: admin.result.user.email, password });
 assert.equal(loggedIn.status, 200);
 assert.equal((await call("/api/content", "GET", undefined, loggedIn.cookie)).result.content.questions.length, 1);
-console.log("Integración correcta: autenticación, roles, D1, dos clientes WebSocket y cierre por temporizador.");
+if (process.env.FLASHRETO_TEST_RECORD) await writeFile(process.env.FLASHRETO_TEST_RECORD, JSON.stringify({ email: admin.result.user.email, password, questionId, roomCode: code, userId: admin.result.user.id }), { mode: 0o600 });
+console.log("Integración correcta: autenticación, roles, persistencia, dos clientes WebSocket y cierre por temporizador.");

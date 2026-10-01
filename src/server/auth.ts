@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { HttpError } from "./http";
-
-export type Role = "admin" | "user";
-export interface AuthUser { id: string; name: string; email: string; role: Role }
+import type { AuthUser, Persistence } from "./persistence";
+export type { AuthUser, Role } from "./persistence";
 
 const credentialsSchema = z.object({
   email: z.string().trim().toLowerCase().email("Escribe un correo válido.").max(254),
@@ -37,10 +36,9 @@ export async function passwordMatches(password: string, salt: string, expected: 
   return difference === 0;
 }
 
-export async function createSession(db: D1Database, userId: string, request: Request): Promise<string> {
+export async function createSession(sessions: Persistence["sessions"], userId: string, request: Request): Promise<string> {
   const token = hex(crypto.getRandomValues(new Uint8Array(32)));
-  await db.prepare("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)")
-    .bind(await digest(token), userId, Date.now() + SESSION_MS).run();
+  await sessions.create(await digest(token), userId, Date.now() + SESSION_MS);
   return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${new URL(request.url).protocol === "https:" ? "; Secure" : ""}`;
 }
 
@@ -54,21 +52,19 @@ function cookieToken(request: Request): string | null {
   return token && /^[a-f0-9]{64}$/.test(token) ? token : null;
 }
 
-export async function revokeSession(db: D1Database, request: Request): Promise<void> {
+export async function revokeSession(sessions: Persistence["sessions"], request: Request): Promise<void> {
   const token = cookieToken(request);
-  if (token) await db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(await digest(token)).run();
+  if (token) await sessions.revoke(await digest(token));
 }
 
-export async function currentUser(db: D1Database, request: Request): Promise<AuthUser | null> {
+export async function currentUser(sessions: Persistence["sessions"], request: Request): Promise<AuthUser | null> {
   const token = cookieToken(request);
   if (!token) return null;
-  const user = await db.prepare("SELECT u.id, u.name, u.email, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ?")
-    .bind(await digest(token), Date.now()).first<AuthUser>();
-  return user ?? null;
+  return sessions.findUser(await digest(token), Date.now());
 }
 
-export async function requireUser(db: D1Database, request: Request): Promise<AuthUser> {
-  const user = await currentUser(db, request);
+export async function requireUser(sessions: Persistence["sessions"], request: Request): Promise<AuthUser> {
+  const user = await currentUser(sessions, request);
   if (!user) throw new HttpError(401, "Inicia sesión para continuar.");
   return user;
 }

@@ -1,10 +1,39 @@
 # FlashReto
 
-Aplicación web de flashcards y exámenes de opción múltiple en español. Un **administrador** organiza áreas, temas, preguntas y exámenes; un **usuario** se registra, entra con contraseña y participa en partidas de dos personas mediante un código de seis dígitos. Las preguntas y salas se guardan en D1; los navegadores reciben los cambios mediante WebSocket.
+Para levantar todo con un solo comando y sin instalar Node en la PC, sigue [LEVANTAR.md](LEVANTAR.md): `bash iniciar.sh`.
 
-## Ejecutar con NVM
+Aplicación web de flashcards y exámenes de opción múltiple en español. Un **administrador** organiza áreas, temas, preguntas y exámenes; un **usuario** se registra, entra con contraseña y participa en partidas de dos personas mediante un código de seis dígitos. Los navegadores reciben los cambios mediante WebSocket.
 
-No hace falta instalar otro Node global. Selecciona Node 24 o posterior con tu NVM y, dentro de `flashreto`, ejecuta:
+Hay dos formas de ejecutarla: **PostgreSQL y Node en Docker** para el entorno local, y **D1 y Cloudflare Workers** para el sitio publicado en Sites. Comparten las mismas pantallas, validaciones, API y reglas de la partida. Sus bases de datos son independientes; los datos del sitio publicado no se copian al contenedor.
+
+## Ejecutar PostgreSQL con Docker
+
+Con Docker Desktop encendido, selecciona el Node 24 que ya tienes en NVM y ejecuta dentro de la carpeta del proyecto:
+
+```bash
+nvm use 24.18.1
+npm ci
+npm run docker:up
+```
+
+Abre **http://localhost:3000**. Docker Compose compila la aplicación y levanta dos servicios: `web` (React, API REST de Node y WebSocket) y `db` (PostgreSQL 18). El backend aplica las migraciones de `db/postgres` antes de aceptar solicitudes. Las imágenes están fijadas por digest y las dependencias por `package-lock.json`.
+
+La primera ejecución genera una contraseña aleatoria de base de datos en `.env.docker`, un archivo local ignorado por Git y por el contexto de Docker. Las contraseñas de las cuentas de la aplicación se eligen al registrarse y se guardan derivadas con PBKDF2.
+
+```bash
+npm run docker:logs
+npm run docker:down
+```
+
+`docker:down` detiene y elimina los contenedores, conservando el volumen `postgres-data`. Al volver a ejecutar `docker:up`, permanecen las cuentas, preguntas y salas. PostgreSQL se publica solo en `127.0.0.1`, en el puerto `POSTGRES_PORT` de `.env.docker`, para conectarlo a herramientas como DBeaver: base y usuario `flashreto`, contraseña en ese mismo archivo. Si un puerto está ocupado, cambia `POSTGRES_PORT` o `FLASHRETO_PORT` antes de iniciar.
+
+Para jugar desde otra computadora en tu red, agrega `FLASHRETO_BIND=0.0.0.0` a `.env.docker`, vuelve a ejecutar `docker:up` y abre `http://IP-DE-TU-PC:3000` desde ambos equipos. La base de datos sigue limitada a la conexión local.
+
+También puedes levantar solo `db` con `docker compose --env-file .env.docker up -d db`, configurar `DATABASE_URL`, ejecutar `npm run build:postgres` y después `npm run start:postgres` con Node fuera del contenedor.
+
+## Ejecutar el entorno D1 de Sites
+
+No hace falta instalar otro Node global. Selecciona Node 24 o posterior con tu NVM y, dentro de la carpeta del proyecto, ejecuta:
 
 ```bash
 nvm use 24
@@ -32,24 +61,33 @@ El navegador no recibe la opción correcta mientras la pregunta está abierta. L
 ```mermaid
 flowchart LR
   UI[React: pantallas por función] --> Client[Cliente HTTP y WebSocket]
-  Client --> API[Worker: autenticación y API REST]
-  API --> D1[(D1: cuentas, bibliotecas, salas)]
-  API --> WS[WebSocket: dos jugadores]
-  WS --> D1
-  UI --> Domain[Reglas puras del dominio]
-  API --> Domain
+  Client --> API[API REST y sesión]
+  API --> Rules[Casos de uso y reglas de partida]
+  Rules --> Ports[Contratos de persistencia]
+  Ports --> PG[Adaptador PostgreSQL en Node]
+  Ports --> D1[Adaptador D1 en Worker]
+  PG --> Postgres[(PostgreSQL: Docker)]
+  D1 --> SQLite[(D1: Sites)]
+  Client --> WS[Protocolo WebSocket compartido]
+  WS --> Rules
 ```
 
 - `src/domain`: modelos, validación de contenido y transiciones puras de la partida; no depende de React ni de D1.
 - `src/features`: formularios y pantallas de autenticación, biblioteca, preguntas, exámenes, estudio, CSV y partida.
 - `src/infrastructure/api-client.ts`: único punto de acceso HTTP desde React.
-- `src/server`: router REST, autenticación, validación de contenido, estado de sala en D1 y conexiones WebSocket.
-- `db/schema.ts` y `drizzle/`: esquema y migración de SQLite/D1.
+- `src/server`: router REST, autenticación, validación de contenido y transiciones de sala.
+- `src/server/persistence.ts`: contratos concretos para cuentas, sesiones, bibliotecas y salas.
+- `src/server/adapters`: consultas de D1 y PostgreSQL. Solo estas implementaciones conocen SQL y los controladores de base de datos.
+- `src/server/node-server.ts`: transporte HTTP y WebSocket de Node y archivos del frontend. `room-socket.ts` comparte el protocolo con el Worker.
+- `db/postgres`: migraciones SQL de PostgreSQL; su registro y checksum evitan modificar migraciones ya aplicadas.
+- `db/schema.ts` y `drizzle/`: esquema y migraciones de SQLite/D1, conservados para Sites.
+- `local-web`: entrada Vite que reutiliza el mismo componente React de `app/page.tsx`; no duplica las pantallas.
+- `compose.yaml` y `Dockerfile`: servicios, volumen persistente, salud y construcción del entorno PostgreSQL.
 - `build/sites-worker.ts`: entrada del Worker; deriva `/api/*` al router y el resto a Vinext.
 
-La biblioteca de cada administrador se almacena como un documento JSON validado en D1. Esto mantiene pequeñas y comprensibles las operaciones de creación, edición, eliminación e importación. Un número de revisión evita sobrescribir cambios hechos en otra pestaña. El servidor comprueba propiedad, relaciones y respuesta correcta antes de aceptar el documento. Las sesiones usan cookies `HttpOnly` con `SameSite=Lax`; las contraseñas se derivan con PBKDF2 y una sal individual.
+La biblioteca de cada administrador se almacena como un documento validado: JSONB en PostgreSQL y texto JSON en D1. Las cuentas y sesiones tienen sus propias tablas y claves foráneas. Esto mantiene pequeñas y comprensibles las operaciones de creación, edición, eliminación e importación. Un número de revisión evita sobrescribir cambios hechos en otra pestaña. El servidor comprueba propiedad, relaciones y respuesta correcta antes de aceptar el documento. Las sesiones usan cookies `HttpOnly` con `SameSite=Lax`; las contraseñas se derivan con PBKDF2 y una sal individual.
 
-Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. D1 es la autoridad para tiempo, respuestas y puntuación: cada cambio usa una revisión condicional, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones de la sala; esta solución evita un servicio adicional y funciona con las vinculaciones disponibles en Sites. Para una aplicación con muchas salas concurrentes, convendría migrar esta coordinación a Durable Objects.
+Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. El backend controla el tiempo, las respuestas y la puntuación; cada cambio de sala usa una revisión condicional en la base de datos, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones. PostgreSQL usa transacciones para elegir un solo primer administrador y para cambiar roles; las consultas usan parámetros. Para muchas salas concurrentes convendría sustituir la observación periódica de revisiones por un sistema de publicación de eventos.
 
 ## API principal
 
@@ -61,7 +99,7 @@ Se eligió **REST** porque las operaciones son directas y no requieren el esquem
 | `POST /api/rooms` | Crear sala desde un examen |
 | `POST /api/rooms/:code/join` | Unirse a una sala |
 | `GET /api/rooms/:code/ws` | Conexión WebSocket de la partida |
-| `GET /api/health` | Estado de las vinculaciones de D1 y salas |
+| `GET /api/health` | Conectividad de la base de datos y existencia de la tabla de salas |
 
 ## Pruebas
 
@@ -69,10 +107,14 @@ Se eligió **REST** porque las operaciones son directas y no requieren el esquem
 npm run typecheck
 npm test
 npm run build
+npm run build:postgres
+npm run test:postgres
 ```
 
-`npm run test:integration` ejecuta un recorrido con **dos clientes WebSocket reales** contra un servidor local iniciado con una **base vacía**. Comprueba el primer administrador, el rol usuario, permisos, persistencia, código inválido, pregunta oculta, puntuación, final y nuevo inicio de sesión. Utiliza correos de `example.test` y una contraseña aleatoria solo para esa ejecución. Si quieres repetir la prueba, prepara otra base local vacía y apunta `FLASHRETO_URL` al servidor correspondiente. Las pruebas de dominio incluyen examen vacío y respuesta tardía.
+`npm run test:postgres` crea un proyecto Docker desechable, con puertos y volumen propios. Ejecuta el recorrido con **dos clientes WebSocket reales**, recrea ambos contenedores conservando el volumen y verifica que la cuenta, la pregunta y la clasificación permanecen. Al terminar elimina solo los recursos de ese proyecto de prueba. No usa la base del entorno normal.
+
+`npm run test:integration` permite ejecutar el mismo recorrido contra un servidor local iniciado con una **base vacía**, usando `FLASHRETO_URL`. Comprueba registros simultáneos con un solo administrador, contraseña incorrecta, correo duplicado, permisos, revisiones, código inválido, pregunta oculta, puntuación, final y cierre por tiempo. Utiliza correos de `example.test` y una contraseña aleatoria solo para esa ejecución. Las pruebas de dominio incluyen CSV válido e inválido, examen vacío y respuesta tardía.
 
 ## Alcance
 
-La generación por IA no está implementada. El contenido se introduce manualmente o con CSV (`pregunta,opcion_a,opcion_b,opcion_c,opcion_d,correcta`, donde `correcta` es A, B, C o D). El despliegue de Sites sigue siendo privado para su propietario; para que otra persona visite esa URL es necesario darle acceso en Sites o cambiar explícitamente el público del sitio. En local, dos navegadores pueden jugar de inmediato.
+La generación por IA no está implementada. El contenido se introduce manualmente o con CSV (`pregunta,opcion_a,opcion_b,opcion_c,opcion_d,correcta`, donde `correcta` es A, B, C o D). El despliegue de Sites sigue siendo privado y utiliza D1. El PostgreSQL de Docker corre en tu computadora; para usarlo públicamente habría que alojar estos contenedores en un servidor con HTTPS, o proporcionar una API y un PostgreSQL alojados. En local, dos navegadores pueden jugar de inmediato.

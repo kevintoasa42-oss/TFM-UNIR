@@ -1,5 +1,5 @@
 import type { ContentState } from "../domain/models";
-import type { Role } from "../server/auth";
+import type { Role } from "../server/persistence";
 
 export interface Account { id: string; name: string; email: string; role: Role }
 export interface ManagedAccount extends Account { createdAt: number }

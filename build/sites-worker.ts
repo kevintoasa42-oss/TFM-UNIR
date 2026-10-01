@@ -3,10 +3,16 @@ import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
 import { api } from "../src/server/router";
+import { d1Persistence } from "../src/server/adapters/d1";
+import { connectRoom } from "../src/server/room-socket";
 
 export default {
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
-    if (new URL(request.url).pathname.startsWith("/api/")) return api(request, env);
+    if (new URL(request.url).pathname.startsWith("/api/")) {
+      if (!env.DB) return Response.json({ error: "La base de datos no está disponible." }, { status: 503 });
+      const store = d1Persistence(env.DB);
+      return api(request, store, (code, userId) => connectRoom(store.rooms, code, userId));
+    }
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
     // the auxiliary service binding are absent from production builds.

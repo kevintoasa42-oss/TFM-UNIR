@@ -3,6 +3,7 @@ import type { ContentState } from "../domain/models";
 import { questionDraftSchema } from "../domain/content";
 import type { AuthUser } from "./auth";
 import { HttpError } from "./http";
+import type { Persistence } from "./persistence";
 
 const id = z.string().uuid();
 const area = z.object({ id, ownerId: id, name: z.string().trim().min(1).max(100), icon: z.string().max(8), color: z.string().max(24) });
@@ -41,23 +42,16 @@ export function validateLibrary(value: unknown, user: AuthUser): ContentState {
   return { users: [publicUser(user)], currentUserId: user.id, areas, topics, questions, exams };
 }
 
-export async function readLibrary(db: D1Database, user: AuthUser): Promise<{ content: ContentState; revision: number }> {
-  const row = await db.prepare("SELECT data, revision FROM libraries WHERE owner_id = ?").bind(user.id).first<{ data: string; revision: number }>();
+export async function readLibrary(libraries: Persistence["libraries"], user: AuthUser): Promise<{ content: ContentState; revision: number }> {
+  const row = await libraries.find(user.id);
   return row ? { content: validateLibrary(JSON.parse(row.data) as unknown, user), revision: row.revision } : { content: emptyContent(user), revision: 0 };
 }
 
-export async function writeLibrary(db: D1Database, user: AuthUser, value: unknown, revision: number): Promise<{ content: ContentState; revision: number }> {
+export async function writeLibrary(libraries: Persistence["libraries"], user: AuthUser, value: unknown, revision: number): Promise<{ content: ContentState; revision: number }> {
   const content = validateLibrary(value, user);
   if (!Number.isSafeInteger(revision) || revision < 0) throw new HttpError(400, "La revisión no es válida.");
   const data = JSON.stringify(content);
   if (data.length > 2_000_000) throw new HttpError(413, "La biblioteca supera el tamaño permitido.");
-  let result: D1Result;
-  if (revision === 0) {
-    result = await db.prepare("INSERT OR IGNORE INTO libraries (owner_id, data, revision) VALUES (?, ?, 1)").bind(user.id, data).run();
-  } else {
-    result = await db.prepare("UPDATE libraries SET data = ?, revision = revision + 1 WHERE owner_id = ? AND revision = ?")
-      .bind(data, user.id, revision).run();
-  }
-  if (!result.meta.changes) throw new HttpError(409, "La biblioteca cambió en otra pestaña. Recárgala antes de guardar.");
+  if (!await libraries.save(user.id, data, revision)) throw new HttpError(409, "La biblioteca cambió en otra pestaña. Recárgala antes de guardar.");
   return { content, revision: revision + 1 };
 }

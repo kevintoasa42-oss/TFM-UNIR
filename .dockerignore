@@ -1,0 +1,16 @@
+node_modules
+.git
+.env*
+.npmrc
+.sites-runtime
+.wrangler
+.next
+.vinext
+.agents
+.codex
+dist
+dist-postgres
+outputs
+work
+coverage
+npm-debug.log*

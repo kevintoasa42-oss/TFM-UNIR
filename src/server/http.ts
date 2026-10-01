@@ -23,8 +23,3 @@ export function errorResponse(error: unknown): Response {
   console.error(error);
   return json({ error: "Ocurrió un error en el servidor." }, 500);
 }
-
-export function database(env: Cloudflare.Env): D1Database {
-  if (!env.DB) throw new HttpError(503, "La base de datos no está disponible.");
-  return env.DB;
-}
