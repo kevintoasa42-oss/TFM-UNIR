@@ -1,55 +1,12 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": [
-        "./frontend/*"
-      ],
-      "@shared/*": ["./shared/*"]
-    },
-    "types": [
-      "node",
-      "@cloudflare/workers-types"
-    ]
+    "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true, "skipLibCheck": true, "noEmit": true,
+    "module": "ESNext", "moduleResolution": "Bundler", "jsx": "react-jsx",
+    "allowImportingTsExtensions": true, "resolveJsonModule": true,
+    "esModuleInterop": true, "isolatedModules": true,
+    "types": ["vite/client", "node"], "paths": { "@/*": ["./src/*"] }
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": [
-    "node_modules",
-    "backend/examples",
-    "frontend/dist",
-    "backend/dist",
-    "dist",
-    "dist-postgres",
-    ".sites-runtime",
-    ".wrangler"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

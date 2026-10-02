@@ -1,153 +1,77 @@
-# FlashReto
+# FlashReto — Frontend
 
-Para levantar todo con un solo comando y sin instalar Node en la PC, sigue [LEVANTAR.md](LEVANTAR.md): `bash iniciar.sh`.
+Este repositorio contiene únicamente la aplicación React. El backend y PostgreSQL están en [TFM-BACK-END](https://github.com/kevintoasa42-oss/TFM-BACK-END). Cada proyecto tiene su propio `package.json`, archivo de bloqueo, TypeScript, pruebas y Dockerfile. Se pueden clonar, instalar y compilar por separado. No existe una carpeta `shared` ni se importa código del otro repositorio.
 
-Aplicación web de flashcards y exámenes de opción múltiple en español. Un **administrador** organiza áreas, temas, preguntas y exámenes; un **usuario** se registra, entra con contraseña y participa en partidas de dos personas mediante un código de seis dígitos. Los navegadores reciben los cambios mediante WebSocket.
-
-Hay dos formas de ejecutarla: **PostgreSQL y Node en Docker** para el entorno local, y **D1 y Cloudflare Workers** para el sitio publicado en Sites. Comparten las mismas pantallas, validaciones, API y reglas de la partida. Sus bases de datos son independientes; los datos del sitio publicado no se copian al contenedor.
-
-## Ejecutar PostgreSQL con Docker
-
-Con Docker Desktop encendido, selecciona el Node 24 que ya tienes en NVM y ejecuta dentro de la carpeta del proyecto:
+Para ejecutar la aplicación completa, abre Docker Desktop y corre:
 
 ```bash
-nvm use 24.18.1
+bash iniciar.sh
+```
+
+El script descarga el backend en la carpeta vecina `TFM-BACK-END` si falta, prepara su configuración y levanta **tres contenedores**. No necesitas instalar Node ni PostgreSQL en la PC. Consulta [LEVANTAR.md](LEVANTAR.md).
+
+| Contenedor | Responsabilidad |
+| --- | --- |
+| `frontend` | Archivos de React y proxy HTTP/WebSocket de Nginx; normalmente `localhost:3000` |
+| `backend` | API, contraseñas, permisos y partidas; normalmente `localhost:4000/api/health` |
+| `db` | PostgreSQL y su volumen persistente |
+
+La configuración de `backend` y `db` pertenece al otro repositorio. El `compose.yaml` de aquí la incorpora con `include`; mantiene separados sus contextos de construcción y Dockerfiles. PostgreSQL conserva el volumen `flashreto-local_postgres-data` que usaba la versión anterior.
+
+## Desarrollo independiente
+
+Usa Node 24 o posterior con tu NVM. Dentro de este repositorio:
+
+```bash
 npm ci
-npm run docker:up
+npm run dev
 ```
 
-Abre **http://localhost:3000**. Docker Compose compila la aplicación y levanta dos servicios: `web` (React, API REST de Node y WebSocket) y `db` (PostgreSQL 18). El backend aplica las migraciones de `db/postgres` antes de aceptar solicitudes. Las imágenes están fijadas por digest y las dependencias por `package-lock.json`.
+Vite abre el frontend en `http://127.0.0.1:5173`. Para conectar una API existente, copia `.env.example` a `.env` y ajusta `API_UPSTREAM`, por ejemplo `http://127.0.0.1:4000`. El frontend se comunica mediante JSON en `/api` y mensajes WebSocket. Sus tipos locales describen las respuestas; las reglas definitivas, el tiempo y los puntos se comprueban en el servidor.
 
-La primera ejecución genera una contraseña aleatoria de base de datos en `.env.docker`, un archivo local ignorado por Git y por el contexto de Docker. Las contraseñas de las cuentas de la aplicación se eligen al registrarse y se guardan derivadas con PBKDF2.
+En Docker, `API_UPSTREAM` se configura al arrancar el contenedor, sin recompilar React. Puedes construir esta imagen sin tener el repositorio del backend:
 
 ```bash
-npm run docker:logs
-npm run docker:down
+docker build -t flashreto-frontend .
+docker run --rm -p 3000:8080 -e API_UPSTREAM=http://host.docker.internal:4000 flashreto-frontend
 ```
 
-`docker:down` detiene y elimina los contenedores, conservando el volumen `postgres-data`. Al volver a ejecutar `docker:up`, permanecen las cuentas, preguntas y salas. PostgreSQL se publica solo en `127.0.0.1`, en el puerto `POSTGRES_PORT` de `.env.docker`, para conectarlo a herramientas como DBeaver: base y usuario `flashreto`, contraseña en ese mismo archivo. Si un puerto está ocupado, cambia `POSTGRES_PORT` o `FLASHRETO_PORT` antes de iniciar.
+En Linux agrega `--add-host=host.docker.internal:host-gateway` si la API corre en la misma PC. Para otra máquina, usa su dirección en `API_UPSTREAM`. El proxy mantiene la sesión y transmite las conexiones WebSocket. Nginx solo sirve archivos y redirige solicitudes; no ejecuta los casos de uso de la API.
 
-Para jugar desde otra computadora en tu red, agrega `FLASHRETO_BIND=0.0.0.0` a `.env.docker`, vuelve a ejecutar `docker:up` y abre `http://IP-DE-TU-PC:3000` desde ambos equipos. La base de datos sigue limitada a la conexión local.
-
-También puedes levantar solo `db` con `docker compose --env-file .env.docker up -d db`, configurar `DATABASE_URL`, ejecutar `npm run build:postgres` y después `npm run start:postgres` con Node fuera del contenedor.
-
-## Ejecutar el entorno D1 de Sites
-
-No hace falta instalar otro Node global. Selecciona Node 24 o posterior con tu NVM y, dentro de la carpeta del proyecto, ejecuta:
-
-```bash
-nvm use 24
-npm ci
-npm run build
-npm run db:local
-npm start
-```
-
-Abre `http://127.0.0.1:8787`. `npm run db:local` aplica la migración a la base local y solo debe ejecutarse una vez por base. Para desarrollo con recarga automática, puedes usar `npm run dev` después de preparar la base. Al registrarte, elige **Administrador** para crear preguntas, exámenes y salas, o **Usuario** para participar en partidas. La API valida y guarda el rol elegido en PostgreSQL o D1, independientemente del orden de registro. Las cuentas existentes conservan su rol. Desde **Usuarios**, un administrador puede cambiar el rol de otra cuenta. No se incluyen contraseñas predefinidas.
-
-## Recorrido
-
-1. Registra una cuenta y selecciona **Administrador** en **Tipo de cuenta**.
-2. Crea un área y un tema en **Mi biblioteca**.
-3. Agrega preguntas con cuatro opciones y marca la única respuesta correcta, o impórtalas desde CSV con revisión por fila.
-4. Crea un examen con preguntas ordenadas de un solo tema. Puedes estudiar las tarjetas individualmente.
-5. En **Partida**, crea una sala y comparte el código. La otra persona crea una cuenta de usuario y entra con ese código desde otro navegador.
-6. El anfitrión inicia cada reto. Hay 20 segundos por pregunta y 100 puntos por acierto. El servidor cierra la ronda al responder ambos o agotar el tiempo, revela la solución y calcula la clasificación.
-
-El navegador no recibe la opción correcta mientras la pregunta está abierta. Las respuestas duplicadas y tardías se rechazan en la sala del servidor. Los exámenes toman una copia de sus preguntas al crear la sala, por lo que una edición posterior no altera la partida en curso.
-
-## Arquitectura
-
-```mermaid
-flowchart LR
-  UI[React: pantallas por función] --> Client[Cliente HTTP y WebSocket]
-  Client --> API[Rutas y permisos]
-  API --> Controllers[Controladores HTTP]
-  Controllers --> Rules[Servicios y reglas de partida]
-  Rules --> Ports[Contratos de persistencia]
-  Ports --> PG[Adaptador PostgreSQL en Node]
-  Ports --> D1[Adaptador D1 en Worker]
-  PG --> Postgres[(PostgreSQL: Docker)]
-  D1 --> SQLite[(D1: Sites)]
-  Client --> WS[Protocolo WebSocket compartido]
-  WS --> Rules
-```
+## Estructura
 
 ```text
-frontend/                Pantallas, formularios, estilos y archivos del navegador
-  app/                   Página principal y layout de Sites
-  src/features/          Autenticación, contenido, estudio, CSV y partida
-  src/infrastructure/    Cliente de la API
-  components/            Componentes de interfaz reutilizables
-  public/                Imágenes e iconos
-  main.tsx               Entrada React para Docker
-  vite.config.ts         Compilación del frontend para Docker
-  vite.sites.config.ts   Configuración del sitio con Vinext
-backend/                 API, sesiones, permisos y WebSocket
-  src/routes/            Método, URL, permisos y controlador de cada ruta
-  src/controllers/       Validación HTTP y respuestas
-  src/services/          Casos de uso y reglas de usuarios, contenido y salas
-  src/middleware/        Comprobación de sesión y rol
-  src/security/          Derivación y comprobación de contraseñas
-  src/adapters/          Acceso a PostgreSQL y D1
-  sites/                 Entrada Worker y compatibilidad con Sites
-  test/                  Integración multijugador y persistencia
-db/                      Esquemas y migraciones de base de datos
-  postgres/              Migraciones SQL de PostgreSQL
-  d1/                    Esquema, configuración y migraciones de SQLite/D1
-shared/                  Código que necesitan frontend y backend
-  domain/                Modelos, contratos de cuentas y reglas puras
-  test/                  Pruebas de contenido, CSV y partida
-scripts/                 Instalación, compilación y pruebas del entorno completo
-compose.yaml             Servicios Docker y volumen persistente
-Dockerfile               Construcción y ejecución de la aplicación
-iniciar.sh               Arranque con un solo comando
+src/App.tsx                 Navegación y sesión de la interfaz
+src/main.tsx                Entrada de React
+src/styles.css              Estilos adaptables
+src/features/               Registro, usuarios, contenido, CSV, estudio y partidas
+src/domain/                 Tipos locales y validación de formularios
+src/infrastructure/         Cliente HTTP de la API
+src/components/             Componentes de interfaz
+test/                       Pruebas de contenido y CSV del frontend
+scripts/test-system.mjs     Prueba de la unión de los dos repositorios
+nginx/                      Proxy y servidor de archivos del frontend
+Dockerfile                  Imagen que contiene solo el frontend
+compose.yaml                Une los tres servicios con la configuración del backend
+iniciar.sh                  Arranque con un solo comando
 ```
 
-El código del navegador no importa código del servidor. Se comunica con él por HTTP y WebSocket; los tipos públicos de cuentas y las validaciones están en `shared`. El dominio no depende de React ni de SQL. `backend/src/persistence.ts` define los contratos para cuentas, sesiones, bibliotecas y salas; los adaptadores implementan esos contratos con consultas a cada base.
+El navegador permite elegir Administrador o Usuario al registrarse. Un administrador crea áreas, temas, preguntas con cuatro opciones, exámenes y salas. Puede importar CSV con revisión por fila y estudiar mediante tarjetas. Un usuario participa con el código de una sala. La generación con IA sigue sin implementarse.
 
-`backend/src/node-server.ts` sirve la API, WebSocket y el frontend compilado. `backend/sites/sites-worker.ts` conecta los mismos casos de uso con el entorno de Sites. Las migraciones se guardan en `db`; las de PostgreSQL tienen un registro y checksum que impiden modificar una migración ya aplicada.
-
-El mapa completo de endpoints está en **`backend/src/routes/api.routes.ts`**. Cada declaración contiene método, URL, acceso (`public`, `authenticated` o `admin`) y controlador. `backend/src/router.ts` encuentra la ruta, verifica la sesión y los permisos, llama al controlador y convierte los errores en respuestas. Los controladores validan los parámetros y el JSON; los servicios reciben datos y contratos de persistencia, sin depender de `Request`, `Response` ni de un controlador SQL.
-
-Por ejemplo, `POST /api/login` entra en `auth.controller.login`, valida las credenciales, llama a `auth.service.loginAccount`, crea la sesión y devuelve la misma cookie que usaba la aplicación. El adaptador PostgreSQL o D1 realiza las consultas. La ruta WebSocket también se declara en ese mapa; cada entorno conserva su propio transporte y usa el mismo servicio de sala para validar jugadores y actualizar la partida.
-
-Se conserva un solo `package.json` y `package-lock.json` en la raíz para instalar y ejecutar todo sin pasos adicionales. La separación es de código y responsabilidades; el entorno sigue usando dos contenedores: la aplicación y PostgreSQL. La compilación local genera `frontend/dist` y `backend/dist`, ambos ignorados por Git. El pequeño `vite.config.ts` de la raíz permite que Sites encuentre la configuración de `frontend`.
-
-La biblioteca de cada administrador se almacena como un documento validado: JSONB en PostgreSQL y texto JSON en D1. Las cuentas y sesiones tienen sus propias tablas y claves foráneas. Esto mantiene pequeñas y comprensibles las operaciones de creación, edición, eliminación e importación. Un número de revisión evita sobrescribir cambios hechos en otra pestaña. El servidor comprueba propiedad, relaciones y respuesta correcta antes de aceptar el documento. Las sesiones usan cookies `HttpOnly` con `SameSite=Lax`; las contraseñas se derivan con PBKDF2 y una sal individual.
-
-Los hashes nuevos incluyen el algoritmo y su número de iteraciones. Node conserva 310.000 iteraciones; Sites utiliza 100.000, el máximo que admite el servidor de Cloudflare. Se mantiene la lectura de las contraseñas antiguas de Node. Las bases son independientes y este cambio no requiere borrar cuentas ni cambiar tablas. La prueba de registro de Sites reproduce el límite de producción, que el Worker local no aplica.
-
-Se eligió **REST** porque las operaciones son directas y no requieren el esquema y los resolutores de GraphQL. **WebSocket** envía las actualizaciones a ambos jugadores. El backend controla el tiempo, las respuestas y la puntuación; cada cambio de sala usa una revisión condicional en la base de datos, de modo que dos respuestas simultáneas no duplican puntos. Cada conexión observa las revisiones. PostgreSQL usa transacciones para cambiar roles; el registro guarda directamente el rol seleccionado y las consultas usan parámetros. Para muchas salas concurrentes convendría sustituir la observación periódica de revisiones por un sistema de publicación de eventos.
-
-## API principal
-
-| Ruta | Uso |
-| --- | --- |
-| `POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/me` | Cuentas y sesión |
-| `GET/PUT /api/content` | Biblioteca del administrador, con revisión |
-| `GET /api/users`, `PATCH /api/users/:id` | Administración de los dos roles |
-| `POST /api/rooms` | Crear sala desde un examen |
-| `POST /api/rooms/:code/join` | Unirse a una sala |
-| `GET /api/rooms/:code/ws` | Conexión WebSocket de la partida |
-| `GET /api/health` | Conectividad de la base de datos y existencia de la tabla de salas |
-
-## Pruebas
+## Comprobaciones
 
 ```bash
-npm run typecheck
 npm test
 npm run build
-npm run build:postgres
-npm run test:postgres
+npm run test:system
 ```
 
-`npm test` verifica las reglas del dominio y los contratos de la API: elección de ambos roles al registrarse, rechazo de roles ausentes o inválidos, sesión ausente o vencida, permisos de ambos roles, origen, JSON inválido, rutas y parámetros, acceso WebSocket y compatibilidad de contraseñas y cookies existentes.
+La primera prueba comprueba asociaciones, bloqueo de preguntas usadas en exámenes y CSV válido e inválido. La compilación incluye TypeScript estricto. `test:system` necesita la carpeta vecina `TFM-BACK-END` con sus dependencias instaladas (`npm ci` allí). Crea un proyecto Docker desechable con sus propios puertos y volumen, prueba la API a través del frontend con **dos clientes WebSocket reales**, recrea los tres contenedores y verifica cuentas, roles, preguntas y resultados. Al terminar retira únicamente los recursos del proyecto de prueba.
 
-`npm run test:postgres` crea un proyecto Docker desechable, con puertos y volumen propios. Ejecuta el recorrido con **dos clientes WebSocket reales**, recrea ambos contenedores conservando el volumen y verifica que la cuenta, la pregunta y la clasificación permanecen. Al terminar elimina solo los recursos de ese proyecto de prueba. No usa la base del entorno normal.
+Las pruebas incluyen selección de rol, contraseña incorrecta, permisos, creación/edición/eliminación de contenido, pregunta usada en un examen, código inválido, sala completa, respuestas duplicadas y tardías, reconexión, temporizador y clasificación.
 
-`npm run test:integration` permite ejecutar el mismo recorrido contra un servidor local iniciado con una **base vacía**, usando `FLASHRETO_URL`. Comprueba que la primera cuenta puede elegir Usuario y las siguientes Administrador, roles inválidos, contraseña incorrecta, correo duplicado, permisos, revisiones, código inválido, pregunta oculta, puntuación, final y cierre por tiempo. Utiliza correos de `example.test` y una contraseña aleatoria solo para esa ejecución. Las pruebas de dominio incluyen CSV válido e inválido, examen vacío y respuesta tardía.
+## Datos y vista anterior
 
-## Alcance
+Los datos de la instalación Docker se conservan en PostgreSQL. El sitio privado `flashreto.soporte197664.chatgpt.site` mantiene la versión previamente publicada con D1; estas bases son independientes. Esta nueva arquitectura se ejecuta mediante los tres contenedores y necesita alojarlos en un servidor para disponer de una URL pública. Los contenedores Docker no se publican mediante Sites.
 
-La generación por IA no está implementada. El contenido se introduce manualmente o con CSV (`pregunta,opcion_a,opcion_b,opcion_c,opcion_d,correcta`, donde `correcta` es A, B, C o D). El despliegue de Sites sigue siendo privado y utiliza D1. El PostgreSQL de Docker corre en tu computadora; para usarlo públicamente habría que alojar estos contenedores en un servidor con HTTPS, o proporcionar una API y un PostgreSQL alojados. En local, dos navegadores pueden jugar de inmediato.
+El proxy sigue la [configuración oficial de WebSocket de Nginx](https://nginx.org/en/docs/http/websocket.html). La composición de los repositorios utiliza [Docker Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/).
