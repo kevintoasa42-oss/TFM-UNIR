@@ -66,9 +66,11 @@ npm run build
 npm run test:system
 ```
 
-La primera prueba comprueba asociaciones, bloqueo de preguntas usadas en exámenes y CSV válido e inválido. La compilación incluye TypeScript estricto. `test:system` necesita la carpeta vecina `TFM-BACK-END` con sus dependencias instaladas (`npm ci` allí). Crea un proyecto Docker desechable con sus propios puertos y volumen, prueba la API a través del frontend con **dos clientes WebSocket reales**, recrea los tres contenedores y verifica cuentas, roles, preguntas y resultados. Al terminar retira únicamente los recursos del proyecto de prueba.
+Las pruebas unitarias comprueban asociaciones, bloqueo de preguntas usadas en exámenes, CSV válido e inválido y el contador cuando los relojes del navegador y el servidor no coinciden. La compilación incluye TypeScript estricto. `test:system` necesita la carpeta vecina `TFM-BACK-END` con sus dependencias instaladas (`npm ci` allí). Crea un proyecto Docker desechable con sus propios puertos y volumen, prueba la API a través del frontend con **dos clientes WebSocket reales**, recrea los tres contenedores y verifica cuentas, roles, preguntas y resultados. Al terminar retira únicamente los recursos del proyecto de prueba.
 
 Las pruebas incluyen selección de rol, contraseña incorrecta, permisos, creación/edición/eliminación de contenido, pregunta usada en un examen, código inválido, sala completa, respuestas duplicadas y tardías, reconexión, temporizador y clasificación.
+
+También se verificaron ambos roles en el navegador con dos sesiones aisladas y una base desechable: registro, cierre e inicio de sesión, creación de área, tema, pregunta y examen, estudio individual, listado de roles, acceso por código y partida hasta la clasificación. El Administrador muestra las herramientas de contenido; Usuario muestra el acceso a partidas. El contador utiliza el plazo y la hora enviados por el servidor y descuenta el tiempo con `performance.now()`.
 
 ## Datos y vista anterior
 

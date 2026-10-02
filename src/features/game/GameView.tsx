@@ -5,6 +5,7 @@ import { ArrowRight, Check, Clock3, Copy, Crown, Play, RotateCcw, Swords, Users 
 import type { Exam } from "@/domain/models";
 import type { RoomView } from "@/domain/room";
 import { apiClient, type Account } from "@/infrastructure/api-client";
+import { createCountdownDeadline, remainingSeconds } from "./countdown";
 
 interface Props {
   user: Account; exams: Exam[]; selectedExamId: string; setSelectedExamId: (id: string) => void;
@@ -18,10 +19,11 @@ export function GameView({ user, exams, selectedExamId, setSelectedExamId, notif
   const [joinCode, setJoinCode] = useState("");
   const [room, setRoom] = useState<RoomView | null>(null);
   const [connected, setConnected] = useState(false);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => performance.now());
+  const [countdownDeadline, setCountdownDeadline] = useState<number | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const [busy, setBusy] = useState(false);
-  const remaining = room?.phase === "question" && room.endsAt ? Math.max(0, Math.ceil((room.endsAt - now) / 1000)) : 20;
+  const remaining = room?.phase === "question" ? remainingSeconds(countdownDeadline, now) : 20;
   const me = room?.players.find((player) => player.id === user.id);
 
   useEffect(() => { setCode(sessionStorage.getItem(storageKey) ?? ""); }, [storageKey]);
@@ -41,7 +43,11 @@ export function GameView({ user, exams, selectedExamId, setSelectedExamId, notif
       };
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data as string) as { type: string; room?: RoomView; message?: string };
-        if (message.type === "state" && message.room) { setRoom(message.room); setNow(Date.now()); }
+        if (message.type === "state" && message.room) {
+          const receivedAt = performance.now();
+          setCountdownDeadline(createCountdownDeadline(message.room.endsAt, message.room.serverNow, receivedAt));
+          setRoom(message.room); setNow(receivedAt);
+        }
         if (message.type === "error" && message.message) notify(message.message, true);
       };
       ws.onclose = () => {
@@ -58,7 +64,7 @@ export function GameView({ user, exams, selectedExamId, setSelectedExamId, notif
   }, [code, notify]);
   useEffect(() => {
     if (room?.phase !== "question") return;
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    const timer = window.setInterval(() => setNow(performance.now()), 250);
     return () => window.clearInterval(timer);
   }, [room?.phase]);
 
