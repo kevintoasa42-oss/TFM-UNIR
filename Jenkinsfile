@@ -79,7 +79,7 @@ pipeline {
         withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_TOKEN')]) {
           sh '''
             set -eu
-            if [ -z "$DOCKERHUB_USER" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            if [ -z "${DOCKERHUB_USER:-}" ] || [ -z "${DOCKERHUB_TOKEN:-}" ]; then
               echo "Sin credenciales de Docker Hub: se omite la publicación."
               exit 0
             fi
