@@ -72,6 +72,8 @@ Las pruebas incluyen selección de rol, contraseña incorrecta, permisos, creaci
 
 También se verificaron ambos roles en el navegador con dos sesiones aisladas y una base desechable: registro, cierre e inicio de sesión, creación de área, tema, pregunta y examen, estudio individual, listado de roles, acceso por código y partida hasta la clasificación. El Administrador muestra las herramientas de contenido; Usuario muestra el acceso a partidas. El contador utiliza el plazo y la hora enviados por el servidor y descuenta el tiempo con `performance.now()`.
 
+En Jenkins, el `Jenkinsfile` ejecuta estas mismas comprobaciones, construye la imagen y la publica en Docker Hub. La instalación de Jenkins en Docker está en `TFM-BACK-END/jenkins` (ver su README).
+
 ## Datos y vista anterior
 
 Los datos de la instalación Docker se conservan en PostgreSQL. El sitio privado `flashreto.soporte197664.chatgpt.site` mantiene la versión previamente publicada con D1; estas bases son independientes. Esta nueva arquitectura se ejecuta mediante los tres contenedores y necesita alojarlos en un servidor para disponer de una URL pública. Los contenedores Docker no se publican mediante Sites.
