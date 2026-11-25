@@ -57,7 +57,9 @@ jobs:
       # Levanta frontend, backend y PostgreSQL, prueba la API y dos clientes WebSocket a través
       # de Nginx, recrea los contenedores y comprueba la persistencia. Al terminar los elimina.
       - name: Sistema completo con Docker Compose
-        run: npm run test:system
+        run: |
+          printf 'POSTGRES_PASSWORD=%s\nPOSTGRES_PORT=0\nBACKEND_PORT=0\n' "$(openssl rand -hex 32)" > "$BACKEND_CONTEXT/.env.docker"
+          npm run test:system
 
   publish:
     needs: ci
