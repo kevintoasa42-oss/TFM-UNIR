@@ -1,0 +1,88 @@
+# CI del frontend en GitHub Actions: mismas etapas que el Jenkinsfile.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: flashreto-frontend
+  BACKEND_CONTEXT: ${{ github.workspace }}/backend
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/TFM-BACK-END
+          ref: main
+          path: backend
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      - name: Instalar dependencias
+        run: |
+          npm ci --no-audit --no-fund
+          npm ci --no-audit --no-fund --prefix "$BACKEND_CONTEXT"
+
+      - name: Pruebas unitarias
+        run: npm test
+
+      - name: Compilar
+        run: npm run build
+
+      - name: Imagen Docker
+        run: docker build --tag "$IMAGE_NAME:${GITHUB_SHA::7}" .
+
+      # Levanta frontend, backend y PostgreSQL, prueba la API y dos clientes WebSocket a través
+      # de Nginx, recrea los contenedores y comprueba la persistencia. Al terminar los elimina.
+      - name: Sistema completo con Docker Compose
+        run: npm run test:system
+
+  publish:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sin credenciales de Docker Hub
+        if: env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == ''
+        run: echo "Define los secretos DOCKERHUB_USERNAME y DOCKERHUB_TOKEN para publicar; se omite la publicación."
+
+      - uses: docker/login-action@v3
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      - name: Publicar en Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        run: |
+          repository="$DOCKERHUB_USERNAME/$IMAGE_NAME"
+          docker build --tag "$repository:${GITHUB_SHA::7}" --tag "$repository:latest" .
+          docker push --all-tags "$repository"
