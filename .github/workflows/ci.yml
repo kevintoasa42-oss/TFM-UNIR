@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   IMAGE_NAME: flashreto-frontend
@@ -63,7 +63,7 @@ jobs:
 
   publish:
     needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -86,5 +86,12 @@ jobs:
         if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
         run: |
           repository="$DOCKERHUB_USERNAME/$IMAGE_NAME"
-          docker build --tag "$repository:${GITHUB_SHA::7}" --tag "$repository:latest" .
+          tags=(--tag "$repository:${GITHUB_SHA::7}")
+          # Un reintento de un commit antiguo no debe mover latest hacia atrás.
+          if [ "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA" ]; then
+            tags+=(--tag "$repository:latest")
+          else
+            echo "main ya avanzó: se publica solo ${GITHUB_SHA::7}, sin mover latest."
+          fi
+          docker build "${tags[@]}" .
           docker push --all-tags "$repository"
