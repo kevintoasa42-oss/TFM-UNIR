@@ -72,7 +72,9 @@ Las pruebas incluyen selección de rol, contraseña incorrecta, permisos, creaci
 
 También se verificaron ambos roles en el navegador con dos sesiones aisladas y una base desechable: registro, cierre e inicio de sesión, creación de área, tema, pregunta y examen, estudio individual, listado de roles, acceso por código y partida hasta la clasificación. El Administrador muestra las herramientas de contenido; Usuario muestra el acceso a partidas. El contador utiliza el plazo y la hora enviados por el servidor y descuenta el tiempo con `performance.now()`.
 
-En Jenkins, el `Jenkinsfile` ejecuta estas mismas comprobaciones, construye la imagen y la publica en Docker Hub. La instalación de Jenkins en Docker está en `TFM-BACK-END/jenkins` (ver su README).
+En GitHub Actions, `.github/workflows/ci.yml` ejecuta estas comprobaciones en cada pull request y cambio de `main`, y en `main` publica `<usuario>/flashreto-frontend` en Docker Hub (secretos `DOCKERHUB_USERNAME` y `DOCKERHUB_TOKEN`).
+
+Como alternativa, en Jenkins el `Jenkinsfile` ejecuta estas mismas comprobaciones, construye la imagen y la publica en Docker Hub. La instalación de Jenkins en Docker está en `TFM-BACK-END/jenkins` (ver su README).
 
 ## Datos y vista anterior
 
